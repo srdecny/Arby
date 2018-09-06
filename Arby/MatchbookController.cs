@@ -25,22 +25,30 @@ namespace Arby
         // Logs in into Matchboook using Credentials in Model.
         public async Task LogIn()
         {
-            string LoginCredentials = JsonConvert.SerializeObject(Model.Credentials);
-            var response =  await GeneratePostRequest("bpapi/rest/security/session", LoginCredentials);
-            var responseContent = await response.Content.ReadAsStringAsync();
-            if (response.StatusCode == HttpStatusCode.OK)
+            try
             {
-                Model.Session = JsonConvert.DeserializeObject<Session>(responseContent);
-                Client.DefaultRequestHeaders.Add("session-token", Model.Session.SessionToken);
-                Form.EnqueueUpdateAction(Form.UpdateLoginBox);
+                string LoginCredentials = JsonConvert.SerializeObject(Model.Credentials);
+                var response = await GeneratePostRequest("bpapi/rest/security/session", LoginCredentials);
+                var responseContent = await response.Content.ReadAsStringAsync();
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    Model.Session = JsonConvert.DeserializeObject<Session>(responseContent);
+                    Client.DefaultRequestHeaders.Add("session-token", Model.Session.SessionToken);
+                    Form.EnqueueUpdateAction(Form.UpdateLoginBox);
+                }
+                else if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    GUIHelper.ThrowWarning("Login error", "Login failed - invalid username or password.");
+                }
+                else
+                {
+                    GUIHelper.ThrowWarning("Unknown error",
+                        "Login failed. Error code returned: " + response.StatusCode.ToString());
+                }
             }
-            else if (response.StatusCode == HttpStatusCode.BadRequest)
+            catch (HttpRequestException ex)
             {
-                GUIHelper.ThrowWarning("Login error", "Login failed - invalid username or password.");
-            }
-            else
-            {
-                GUIHelper.ThrowWarning("Unknown error", "Login failed. Error code returned: "+ response.StatusCode.ToString());
+                GUIHelper.ThrowWarning("Web error", "Error accessing Matchbook. Check internet connection and/or Matchbook status.");
             }
 
         }
@@ -57,9 +65,17 @@ namespace Arby
         // Generates new Get request to given API path with given payload and returns the response
         public async Task<String> GenerateGetRequest(string RelativePath)
         {
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, RelativePath);
-            var response = await Client.SendAsync(request);
-            return await response.Content.ReadAsStringAsync();
+            try
+            {
+                HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, RelativePath);
+                var response = await Client.SendAsync(request);
+                return await response.Content.ReadAsStringAsync();
+            }
+            catch (HttpRequestException ex)
+            {
+                GUIHelper.ThrowWarning("Web error", "Error accessing Matchbook. Check internet connection and/or Matchbook status.");
+                return "";
+            }
         }
 
         public async Task GetPopularMarkets()

@@ -5,6 +5,8 @@ using System.Data;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -23,24 +25,39 @@ namespace Arby
         private ArbitrageTimer Timer = new ArbitrageTimer();
 
         public FortunaFeed(MatchbookModel model)
-        {
+        {   
             Model = model;
             InitializeComponent();
             Timer.Tick += new EventHandler(WatchedEvents_Tick);
             Timer.Start();
         }
 
-        private BettingData GetNewFeedData()
+        private async Task<BettingData> GetNewFeedData()
         {
-            XmlSerializer Serializer = new XmlSerializer(typeof(BettingData));
-            XmlReader Reader = XmlReader.Create("http://ext.ifortuna.cz/xmldata");
-            return (BettingData) Serializer.Deserialize(Reader);
+            using (XmlReader Reader = XmlReader.Create("http://ext.ifortuna.cz/xmldata", new XmlReaderSettings() {Async = true}))
+            {
+                XmlSerializer Serializer = new XmlSerializer(typeof(BettingData));
+                try
+                {
+                    await Reader.ReadAsync();
+                    return (BettingData)Serializer.Deserialize(Reader);
+
+                }
+                catch (WebException Ex)
+                {
+                    GUIHelper.ThrowWarning("Web error", "Error accessing iFortuna XML feed. Check internet connection and/or feed avaliability.");
+                    return null;
+                }
+
+
+            }
         }
 
-        private void FindFortunaEventsByName()
+        private async void FindFortunaEventsByName()
         {
             BindingSource Events = new BindingSource();
-            BettingData FortunaEvents = GetNewFeedData();
+            BettingData FortunaEvents = await GetNewFeedData();
+            if (FortunaEvents == null) return;
             foreach (var Category in FortunaEvents.Category)
             {
                 foreach (var Tournament in Category.Tournament)
@@ -177,9 +194,11 @@ namespace Arby
             }
         }
 
-        private void CheckWatchedEvents()
+        private async void CheckWatchedEvents()
         {
-            BettingData FortunaEvents = GetNewFeedData();
+            if (WatchedEvents.Count == 0) return;
+            BettingData FortunaEvents = await GetNewFeedData();
+            if (FortunaEvents == null) return;
             foreach (var EventsToWatch in WatchedEvents)
             {
                 Match FortunaMatch = FortunaEventHelper.GetMatchByID(EventsToWatch.Item2, FortunaEvents);
